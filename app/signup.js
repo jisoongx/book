@@ -11,34 +11,67 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebaseConfig";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { auth, db} from "../firebaseConfig";
 import { useRouter } from "expo-router";
+import { collection, addDoc } from "firebase/firestore";
 
 export default function SignUpScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [role, setRole] = useState("");
+  const [birthdate, setBirthdate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const router = useRouter();
 
+  const formatDate = (date) => {
+    const options = { year: "numeric", month: "long", day: "numeric" };
+    return date.toLocaleDateString(undefined, options);
+  };
+
   const handleSignUp = async () => {
-    if (!email || !password || !confirm) {
-      Alert.alert("Error", "All fields are required.");
+    if (!email || !password || !confirm || !firstName || !lastName || !role) {
+      alert("All fields are required.");
+      return;
+    }
+
+    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+
+    if (password.length < 8) {
+      alert("Password must be at least 8 characters long.");
       return;
     }
 
     if (password !== confirm) {
-      Alert.alert("Error", "Passwords do not match.");
+      alert("Passwords do not match.");
       return;
     }
 
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      Alert.alert("Success", "Account created!");
-      router.push("/"); // Redirect to login or home
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await addDoc(collection(db, "users"), {
+        uid: userCredential.user.uid, // still keep UID if you want to link auth with Firestore
+        firstName,
+        lastName,
+        role,
+        birthdate: birthdate.toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+
+      await signOut(auth);
+      alert("Account created! Please log in.");
+      router.replace("/");
     } catch (error) {
-      Alert.alert("Sign Up Failed", error.message);
+      alert("Sign Up Failed: " + error.message);
     }
+
   };
 
   return (
@@ -48,6 +81,49 @@ export default function SignUpScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <Text style={styles.title}>Create Account</Text>
+
+        <TextInput
+          placeholder="First Name"
+          value={firstName}
+          onChangeText={setFirstName}
+          style={styles.input}
+        />
+
+        <TextInput
+          placeholder="Last Name"
+          value={lastName}
+          onChangeText={setLastName}
+          style={styles.input}
+        />
+
+        <TextInput
+          placeholder="Role"
+          value={role}
+          onChangeText={setRole}
+          style={styles.input}
+        />
+
+        <TouchableOpacity
+          style={[styles.input, styles.dateInput]}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text style={{ color: birthdate ? "#000" : "#999" }}>
+            {birthdate ? formatDate(birthdate) : "Select Birthdate"}
+          </Text>
+        </TouchableOpacity>
+
+        {showDatePicker && (
+          <DateTimePicker
+            value={birthdate || new Date()}
+            mode="date"
+            display="default"
+            onChange={(event, selectedDate) => {
+              setShowDatePicker(false);
+              if (selectedDate) setBirthdate(selectedDate);
+            }}
+            maximumDate={new Date()}
+          />
+        )}
 
         <TextInput
           placeholder="Email"
@@ -108,6 +184,9 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 14,
     fontSize: 16,
+  },
+  dateInput: {
+    justifyContent: "center",
   },
   button: {
     backgroundColor: ACCENT,
